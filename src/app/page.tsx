@@ -9,9 +9,16 @@ type AgentStep = {
   status: 'ready' | 'active' | 'done';
 };
 
+type ProjectSummary = {
+  template: string;
+  dimensions: string;
+  thickness: string;
+  estimate: string;
+};
+
 const initialSteps: AgentStep[] = [
   { id: 'input', title: 'Input Agent', description: 'Recibe imagen, PDF, chat o template', status: 'done' },
-  { id: 'vision', title: 'Vision Agent', description: 'Detecta líneas, paneles y cotas', status: 'active' },
+  { id: 'vision', title: 'Vision Agent', description: 'Detecta líneas, paneles y cotas', status: 'ready' },
   { id: 'cad', title: 'CAD Agent', description: 'Convierte entradas en geometría', status: 'ready' },
   { id: 'builder', title: 'Parametric Builder', description: 'Compone el GlassProject', status: 'ready' },
 ];
@@ -19,20 +26,16 @@ const initialSteps: AgentStep[] = [
 export default function HomePage() {
   const [prompt, setPrompt] = useState('Quiero una puerta de baño 1200 x 2200 con vidrio de 10 mm.');
   const [steps, setSteps] = useState(initialSteps);
+  const [summary, setSummary] = useState<ProjectSummary>({
+    template: 'pivot_door',
+    dimensions: '1200 x 2200 mm',
+    thickness: '10 mm',
+    estimate: '3 paneles / 2 bisagras / BOM preliminar',
+  });
+  const [loading, setLoading] = useState(false);
 
-  const summary = useMemo(() => {
-    const width = 1200;
-    const height = 2200;
-    const thickness = 10;
-    return {
-      template: 'pivot_door',
-      dimensions: `${width} x ${height} mm`,
-      thickness: `${thickness} mm`,
-      estimate: '3 paneles / 2 bisagras / BOM preliminar',
-    };
-  }, []);
-
-  const runDemo = () => {
+  const runDemo = async () => {
+    setLoading(true);
     setSteps((current) =>
       current.map((step, index) => {
         if (index === 0) return { ...step, status: 'done' };
@@ -40,6 +43,29 @@ export default function HomePage() {
         return { ...step, status: 'ready' };
       })
     );
+
+    const response = await fetch('/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+
+    const payload = await response.json();
+
+    setSummary({
+      template: payload.template,
+      dimensions: `${payload.dimensions.width} x ${payload.dimensions.height} mm`,
+      thickness: `${payload.thickness_mm} mm`,
+      estimate: `${payload.estimated_panels} paneles / ${payload.estimated_hinges} bisagras / BOM preliminar`,
+    });
+
+    setSteps((current) =>
+      current.map((step, index) => {
+        if (index < 3) return { ...step, status: 'done' };
+        return { ...step, status: 'ready' };
+      })
+    );
+    setLoading(false);
   };
 
   return (
@@ -52,7 +78,7 @@ export default function HomePage() {
             Este prototipo representa el blueprint del producto: captura de input, visión de diseño,
             integración CAD y construcción del modelo GlassProject.
           </p>
-          <button onClick={runDemo}>Ejecutar demo</button>
+          <button onClick={runDemo} disabled={loading}>{loading ? 'Procesando...' : 'Ejecutar demo'}</button>
         </div>
 
         <div className="panel-card">
